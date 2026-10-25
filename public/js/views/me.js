@@ -4,7 +4,7 @@ import { icon } from '../icons.js';
 import { t, LANGS, getLang } from '../i18n.js';
 import { allTx, settings, updateSettings, replaceAll, clearAll, sortTx } from '../store.js';
 import { CURRENCIES, currencyName, ymd } from '../format.js';
-import { aiHealth, checkHealth, MODEL_LABEL } from '../recognize.js';
+import { aiHealth, checkHealth, modelLabel, MODELS, getApiKey, setApiKey } from '../recognize.js';
 
 function selectCell({ iconName, label, value, options, onChange, note }) {
   const sel = h('select', { class: 'cell-select', 'aria-label': label, onchange: (e) => onChange(e.target.value) },
@@ -20,9 +20,26 @@ function selectCell({ iconName, label, value, options, onChange, note }) {
 
 function statusDot() {
   const s = aiHealth().state;
-  const map = { ok: ['ok', 'ai.ok'], nologin: ['warn', 'ai.notLogged'], noserver: ['bad', 'ai.noServer'], nocli: ['bad', 'ai.noCli'], checking: ['', 'ai.checking'], unknown: ['', 'ai.checking'] };
+  const map = { ok: ['ok', 'ai.ok'], nokey: ['warn', 'ai.noKey'], nologin: ['warn', 'ai.notLogged'], nocli: ['bad', 'ai.noCli'], checking: ['', 'ai.checking'], unknown: ['', 'ai.checking'] };
   const [cls, key] = map[s] || map.unknown;
   return h('span', { class: `status ${cls}` }, t(key));
+}
+
+// API Key 输入：失焦或回车时保存，只存在本机浏览器
+function apiKeyCell() {
+  const saved = getApiKey();
+  const input = h('input', {
+    class: 'cell-input', type: 'password', autocomplete: 'off', spellcheck: false, placeholder: 'sk-ant-…',
+    value: saved, 'aria-label': 'Anthropic API Key',
+    onchange: (e) => {
+      const v = e.target.value.trim();
+      if (v === getApiKey()) return;
+      setApiKey(v);
+      toast(t(v ? 'me.keySaved' : 'me.keyCleared'), 'success');
+    },
+    onkeydown: (e) => { if (e.key === 'Enter') e.target.blur(); },
+  });
+  return h('label', { class: 'cell' }, h('span', { class: 'cell-ico' }, icon('key', 18)), h('span', { class: 'cell-label' }, 'API Key'), input);
 }
 
 function csvEscape(v) {
@@ -63,7 +80,7 @@ export function renderMe(root) {
   const s = settings();
   const tx = allTx();
   const days = new Set(tx.map((x) => x.date)).size;
-  const health = aiHealth().state;
+  const { state: health, mode } = aiHealth();
 
   root.replaceChildren(
     h('header', { class: 'page-head' }, h('h1', { class: 'page-title' }, t('tab.me'))),
@@ -93,9 +110,14 @@ export function renderMe(root) {
 
     h('div', { class: 'group-title' }, t('me.ai')),
     h('div', { class: 'card cells' },
-      cell({ iconName: 'sparkles', label: h('span', null, t('me.engine'), h('small', null, `${MODEL_LABEL} · Claude Code`)), right: statusDot() }),
-      health !== 'ok' && health !== 'checking' && h('div', { class: 'cell-note' }, t('ai.loginHint'), h('code', { class: 'cmd' }, 'claude auth login')),
+      cell({ iconName: 'sparkles', label: h('span', null, t('me.engine'), h('small', null, `${modelLabel()} · ${mode === 'local' ? t('ai.engineLocal') : t('ai.engineApi')}`)), right: statusDot() }),
+      mode === 'local' && health !== 'ok' && health !== 'checking' && h('div', { class: 'cell-note' }, t('ai.loginHint'), h('code', { class: 'cmd' }, 'claude auth login')),
       cell({ iconName: 'refresh', label: t('me.check'), onClick: () => checkHealth() })),
+    // 本地订阅已连通时不需要 Key；否则（网页版）在这里填写
+    !(mode === 'local' && health === 'ok') && h('div', { class: 'card cells api-card' },
+      apiKeyCell(),
+      selectCell({ iconName: 'cpu', label: t('me.model'), value: MODELS.some((m) => m.id === s.apiModel) ? s.apiModel : MODELS[0].id, options: MODELS.map((m) => ({ value: m.id, label: m.label })), onChange: (v) => updateSettings({ apiModel: v }) }),
+      h('div', { class: 'cell-note' }, t('me.keyNote'), h('a', { href: 'https://console.anthropic.com/settings/keys', target: '_blank', rel: 'noopener' }, t('me.keyGet')))),
 
     h('div', { class: 'group-title' }, t('me.data')),
     h('div', { class: 'card cells' },

@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { LANG_NAMES, buildSchema, buildSystemPrompt, buildContent, extractJson } from './public/js/prompt.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -18,13 +19,6 @@ const TIMEOUT_MS = Number(process.env.RECOGNIZE_TIMEOUT_MS || 240000);
 const MAX_BODY = 40 * 1024 * 1024;
 const MAX_JOBS = 2;
 
-const LANG_NAMES = {
-  'zh-CN': 'Simplified Chinese (简体中文)',
-  'zh-TW': 'Traditional Chinese (繁體中文)',
-  en: 'English',
-  ja: 'Japanese (日本語)',
-};
-
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -35,8 +29,6 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
 };
-
-const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 // ---------- Claude CLI ----------
 
@@ -85,83 +77,6 @@ async function authStatus() {
   return value;
 }
 
-function buildSchema(categories) {
-  const expense = categories.expense;
-  const income = categories.income;
-  return {
-    type: 'object',
-    properties: {
-      document_type: { type: 'string', enum: ['receipt', 'invoice', 'statement', 'voice', 'other'] },
-      source_language: { type: 'string', description: 'BCP-47 code of the source text, e.g. ja, en, zh-CN' },
-      message: { type: 'string', description: 'Short note to the user in the output language; empty if nothing to say' },
-      transactions: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            type: { type: 'string', enum: ['expense', 'income'] },
-            amount: { type: 'number', description: 'Positive amount in the document currency' },
-            currency: { type: 'string', description: 'ISO 4217 code of the document currency' },
-            rate_to_base: { type: 'number', description: 'Approximate value of 1 unit of currency in the base currency; 1 if same' },
-            category: { type: 'string', enum: [...expense, ...income] },
-            merchant: { type: 'string' },
-            note: { type: 'string' },
-            date: { type: 'string', description: 'YYYY-MM-DD' },
-            time: { type: 'string', description: 'HH:MM, empty if unknown' },
-            items: {
-              type: 'array',
-              description: 'Purchased line items of a single receipt; [] for statements and speech',
-              items: {
-                type: 'object',
-                properties: {
-                  name: { type: 'string', description: 'Item name in the output language' },
-                  amount: { type: 'number', description: 'Line total in the document currency; discounts negative' },
-                },
-                required: ['name', 'amount'],
-              },
-            },
-          },
-          required: ['type', 'amount', 'currency', 'rate_to_base', 'category', 'merchant', 'note', 'date', 'time', 'items'],
-        },
-      },
-    },
-    required: ['document_type', 'source_language', 'message', 'transactions'],
-  };
-}
-
-function buildSystemPrompt({ lang, currency, today, categories }) {
-  const langName = LANG_NAMES[lang] || LANG_NAMES['zh-CN'];
-  return `You are the recognition engine of a personal bookkeeping app. Turn receipts, invoices, bill/statement screenshots or a spoken description into bookkeeping records.
-
-Today is ${today}. The user's base currency is ${currency}. Output language: ${langName}.
-
-Rules:
-- Documents may be in any language. Write "merchant", "note" and "message" in ${langName}. Translate them; for well-known brands keep the original name next to the translation if it helps recognition (e.g. "罗森 Lawson").
-- A single purchase receipt or invoice = ONE transaction. amount = the final total actually paid (after discounts and tax, before cash change). The note briefly lists the main items (at most ~4), e.g. "饭团、绿茶、炸鸡块等".
-- For a single receipt also fill "items" with every purchased line (translated name, line total in the document currency; discounts as negative lines). Leave tax-included notes, change and payment lines out. For statements and speech "items" is [].
-- "merchant" is the shop/payee name only; "note" is a short description and must not repeat the merchant.
-- A statement or bill list (bank, credit card, Alipay, WeChat Pay, PayPal…) = one transaction per line item. Skip balances, subtotals and summary rows.
-- Several images may belong to the same long receipt; do not double count.
-- type: "expense" for spending; "income" for salary, refunds, red packets received, transfers received, interest, etc.
-- amount is always positive, in the document's own currency. currency is its ISO 4217 code (¥ on a Japanese receipt is JPY; ¥/元 on a Chinese receipt is CNY).
-- rate_to_base: 1 if the currency equals ${currency}; otherwise your best approximate exchange rate (1 unit of the document currency in ${currency}).
-- category must be one of the ids below; pick the closest, fall back to "other" / "other_income".
-  Expense ids: ${categories.expense.join(', ')}
-  Income ids: ${categories.income.join(', ')}
-- date as YYYY-MM-DD. If the year is missing infer the most recent past date; if no date at all use today. Resolve relative dates in speech ("昨天", "last Friday") against today. time as HH:MM or "".
-- For speech, the text may contain several records ("午饭35，打车20") — return each one. If no currency is mentioned assume ${currency}.
-- If nothing can be recognised, return an empty transactions array and explain why in "message".
-Return only the structured result.`;
-}
-
-function extractJson(text) {
-  const s = String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-  const a = s.indexOf('{');
-  const b = s.lastIndexOf('}');
-  if (a < 0 || b < a) throw new Error('识别结果格式异常');
-  return JSON.parse(s.slice(a, b + 1));
-}
-
 let running = 0;
 async function recognize(body) {
   const categories = {
@@ -172,19 +87,8 @@ async function recognize(body) {
   const currency = /^[A-Z]{3}$/.test(body.currency) ? body.currency : 'CNY';
   const today = /^\d{4}-\d{2}-\d{2}$/.test(body.today) ? body.today : new Date().toISOString().slice(0, 10);
 
-  const content = [];
-  for (const f of (body.files || []).slice(0, 6)) {
-    if (IMAGE_TYPES.has(f.mediaType)) content.push({ type: 'image', source: { type: 'base64', media_type: f.mediaType, data: f.data } });
-    else if (f.mediaType === 'application/pdf') content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } });
-  }
-  const text = String(body.text || '').slice(0, 2000).trim();
-  if (!content.length && !text) throw new Error('没有可识别的内容');
-  content.push({
-    type: 'text',
-    text: text
-      ? `Spoken bookkeeping input (transcribed):\n"""${text}"""`
-      : 'Recognise the attached bill(s) and return the bookkeeping records.',
-  });
+  const content = buildContent(body.files, body.text);
+  if (!content) throw new Error('没有可识别的内容');
 
   const args = [
     '-p',

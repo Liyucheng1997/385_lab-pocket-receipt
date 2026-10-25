@@ -367,6 +367,11 @@ label.cell:active { background: var(--hover); }
 .status.ok { color: var(--success); } .status.ok::before { background: var(--success); }
 .status.warn { color: var(--warning); } .status.warn::before { background: var(--warning); }
 .status.bad { color: var(--danger); } .status.bad::before { background: var(--danger); }
+.cell-input { flex: 0 1 190px; min-width: 0; height: 34px; border: 0; border-radius: 9px; background: var(--fill); color: var(--text); padding: 0 10px; font-family: var(--mono); font-size: 13px; text-align: right; }
+.cell-input:focus { outline: 2px solid var(--primary); outline-offset: 0; text-align: left; }
+.cell-note a { color: var(--primary); font-weight: 500; margin-top: 4px; }
+.api-card { margin-top: 10px; }
+.api-card .cell-note { padding-top: 4px; }
 .about { padding: 14px 16px; font-size: 13px; color: var(--text-2); line-height: 1.6; }
 
 /* ---------- 月份 / 搜索 ---------- */

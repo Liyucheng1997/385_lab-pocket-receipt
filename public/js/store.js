@@ -2,7 +2,7 @@
 const TX_KEY = 'ledger.v1.tx';
 const SETTINGS_KEY = 'ledger.v1.settings';
 
-export const DEFAULT_SETTINGS = { lang: 'zh-CN', currency: 'CNY', theme: 'system', budget: 0, catBudgets: {}, voiceLang: '' };
+export const DEFAULT_SETTINGS = { lang: 'zh-CN', currency: 'CNY', theme: 'system', budget: 0, catBudgets: {}, voiceLang: '', apiModel: 'claude-opus-5-5' };
 
 function load(key, fallback) {
   try {
@@ -104,7 +104,7 @@ export function replaceAll(tx, newSettings) {
 
 export function clearAll() {
   state.tx = [];
-  state.settings = { ...DEFAULT_SETTINGS, lang: state.settings.lang, theme: state.settings.theme, currency: state.settings.currency };
+  state.settings = { ...DEFAULT_SETTINGS, lang: state.settings.lang, theme: state.settings.theme, currency: state.settings.currency, apiModel: state.settings.apiModel };
   persist(TX_KEY, state.tx);
   persist(SETTINGS_KEY, state.settings);
   emit();

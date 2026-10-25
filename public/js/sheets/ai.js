@@ -5,15 +5,16 @@ import { t, getLang } from '../i18n.js';
 import { CATEGORIES, isCategoryOfType } from '../categories.js';
 import { addTx, settings, updateSettings } from '../store.js';
 import { money, ymd, languageName } from '../format.js';
-import { recognize, fileToPayload, localParse, aiHealth, MODEL_LABEL } from '../recognize.js';
+import { recognize, fileToPayload, localParse, aiHealth, modelLabel } from '../recognize.js';
 
 const MAX_FILES = 6;
 
 // Claude 未连接时的提示条
 function offlineHint() {
-  const st = aiHealth().state;
-  if (st === 'ok' || st === 'checking' || st === 'unknown') return null;
-  return h('div', { class: 'hint-bar' }, icon('info', 16), h('div', null, t(st === 'noserver' ? 'ai.noServer' : st === 'nocli' ? 'ai.noCli' : 'ai.notLogged'), ' · ', t('ai.loginHint')));
+  const { state } = aiHealth();
+  if (state === 'ok' || state === 'checking' || state === 'unknown') return null;
+  const msg = state === 'nokey' ? t('ai.keyHint') : [t(state === 'nocli' ? 'ai.noCli' : 'ai.notLogged'), ' · ', t('ai.loginHint')];
+  return h('div', { class: 'hint-bar' }, icon('info', 16), h('div', null, msg));
 }
 
 // ---------- 账单识别 ----------
@@ -179,7 +180,7 @@ function runRecognition(sheet, payload, source, back) {
   sheet.setContent(h('div', { class: 'ai-loading' },
     h('div', { class: 'ai-orb' }, icon('sparkles', 30)),
     h('div', { class: 'ai-loading-title' }, t('ai.working')),
-    h('div', { class: 'ai-loading-sub' }, t('ai.model', { m: MODEL_LABEL })),
+    h('div', { class: 'ai-loading-sub' }, t(aiHealth().mode === 'local' ? 'ai.model' : 'ai.modelApi', { m: modelLabel() })),
     elapsed,
     h('button', { class: 'btn', onclick: cancel }, t('cancel'))));
 
