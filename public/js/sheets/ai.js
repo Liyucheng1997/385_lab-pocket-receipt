@@ -3,9 +3,11 @@ import { h, openSheet, toast, catTile, catName } from '../ui.js';
 import { icon } from '../icons.js';
 import { t, getLang } from '../i18n.js';
 import { CATEGORIES, isCategoryOfType } from '../categories.js';
-import { addTx, settings, updateSettings } from '../store.js';
+import { addTx, allTx, settings, updateSettings } from '../store.js';
 import { money, ymd, languageName } from '../format.js';
 import { recognize, fileToPayload, localParse, aiHealth, modelLabel } from '../recognize.js';
+import { accounts, getAccount, accountName, accountByKind, defaultAccount, accountSelect } from '../accounts.js';
+import { savePhotos } from '../photos.js';
 
 const MAX_FILES = 6;
 
@@ -18,7 +20,9 @@ function offlineHint() {
 }
 
 // ---------- 账单识别 ----------
-export function openScan() {
+// start: 'camera' 直接拉起相机，'pick' 直接打开相册 / 文件选择
+export function openScan(opts) {
+  const start = opts && !(opts instanceof Event) ? opts.start : '';
   const files = [];
   const sheet = openSheet({ title: t('scan.title'), className: 'ai-sheet' });
 
@@ -49,7 +53,8 @@ export function openScan() {
 
     sheet.setContent(h('div', { class: 'ai-pick' },
       offlineHint(),
-      !files.length && h('div', { class: 'ai-hero' }, h('div', { class: 'ai-hero-ico' }, icon('receipt', 30)), h('p', null, t('scan.desc'))),
+      !files.length && h('div', { class: 'ai-hero' }, h('div', { class: 'ai-hero-ico' }, icon('scan', 30)), h('p', null, t('scan.desc'))),
+      !files.length && h('div', { class: 'scan-tips' }, ['scan.tip1', 'scan.tip2', 'scan.tip3'].map((k) => h('span', null, icon('check', 12, 3), t(k)))),
       thumbs,
       h('div', { class: 'pick-btns' },
         h('button', { class: 'pick-btn', onclick: () => cameraInput.click() }, icon('camera', 22), t('scan.camera')),
@@ -59,10 +64,13 @@ export function openScan() {
   }
 
   function run() {
-    runRecognition(sheet, { files: files.map(({ mediaType, data }) => ({ mediaType, data })) }, 'scan', renderPick);
+    runRecognition(sheet, { files: files.map(({ mediaType, data }) => ({ mediaType, data })) }, 'scan', renderPick, files.map((f) => f.preview).filter(Boolean));
   }
 
   renderPick();
+  // 仍在用户点击的同一次事件里，浏览器才允许拉起相机 / 文件选择
+  if (start === 'camera') cameraInput.click();
+  else if (start === 'pick') pickInput.click();
   return sheet;
 }
 
@@ -170,7 +178,7 @@ export function openVoice() {
 }
 
 // ---------- 识别流程（共用） ----------
-function runRecognition(sheet, payload, source, back) {
+function runRecognition(sheet, payload, source, back, photos = []) {
   const ctrl = new AbortController();
   const t0 = Date.now();
   const elapsed = h('div', { class: 'ai-elapsed tabular' }, t('ai.elapsed', { n: 0 }));
@@ -188,7 +196,7 @@ function runRecognition(sheet, payload, source, back) {
     .then((result) => {
       clearInterval(timer);
       if (!document.body.contains(sheet.el)) return;
-      showReview(sheet, result, source, back);
+      showReview(sheet, result, source, back, photos);
     })
     .catch((err) => {
       clearInterval(timer);
@@ -211,25 +219,34 @@ function runRecognition(sheet, payload, source, back) {
     });
 }
 
-function showReview(sheet, result, source, back) {
+function showReview(sheet, result, source, back, photos = []) {
   const base = settings().currency;
+  const fallbackAcct = defaultAccount();
+  const existing = allTx();
+  const round = (n) => Math.round(n * 100) / 100;
   const items = (result.transactions || []).map((x) => {
     // 分类决定收支类型；分类无效时按 type 回落到"其他"
     const inc = isCategoryOfType(x.category, 'income');
     const exp = isCategoryOfType(x.category, 'expense');
     const type = inc ? 'income' : exp ? 'expense' : x.type === 'income' ? 'income' : 'expense';
     const currency = (x.currency || base).toUpperCase();
+    const rate = currency === base ? 1 : Number(x.rate_to_base) || 1;
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(x.date) ? x.date : ymd();
+    // 同一天、同类型、同金额的记录已经存在：多半是重复导入，默认不勾选
+    const dup = existing.some((e) => e.date === date && e.type === type && Math.abs(e.amount - round(Number(x.amount) * rate)) < 0.005);
     return {
-      checked: true,
+      checked: !dup,
+      dup,
+      account: accountByKind(x.payment) || fallbackAcct,
       type,
       category: inc || exp ? x.category : type === 'income' ? 'other_income' : 'other',
       amount: String(x.amount),
       currency,
-      rate: currency === base ? 1 : Number(x.rate_to_base) || 1,
+      rate,
       note: x.note || '',
       merchant: x.merchant || '',
       lineItems: Array.isArray(x.items) ? x.items.filter((i) => i && i.name) : [],
-      date: /^\d{4}-\d{2}-\d{2}$/.test(x.date) ? x.date : ymd(),
+      date,
       time: x.time || '',
     };
   });
@@ -243,10 +260,14 @@ function showReview(sheet, result, source, back) {
     return Math.round(a * (it.currency === base ? 1 : it.rate) * 100) / 100;
   }
 
+  const summary = h('div', { class: 'review-sum tabular' });
   function updateSave() {
-    const n = items.filter((i) => i.checked && parseFloat(i.amount) > 0).length;
-    saveBtn.textContent = t('ai.saveN', { n });
-    saveBtn.disabled = !n;
+    const chosen = items.filter((i) => i.checked && parseFloat(i.amount) > 0);
+    const out = round(chosen.reduce((s, i) => (i.type === 'expense' ? s + baseAmount(i) : s), 0));
+    const inc = round(chosen.reduce((s, i) => (i.type === 'income' ? s + baseAmount(i) : s), 0));
+    summary.textContent = [out > 0 && `${t('expense')} ${money(out, base)}`, inc > 0 && `${t('income')} ${money(inc, base)}`].filter(Boolean).join('  ·  ');
+    saveBtn.textContent = t('ai.saveN', { n: chosen.length });
+    saveBtn.disabled = !chosen.length;
   }
 
   function categorySelect(it, onChange) {
@@ -278,7 +299,7 @@ function showReview(sheet, result, source, back) {
             catTile(it.category, { size: 34, active: true }),
             h('span', null, catName(it.category)),
             icon('down', 14),
-            categorySelect(it, render)),
+            categorySelect(it, () => { render(); updateSave(); })),
           h('div', { class: `review-amount ${it.type}` },
             h('span', { class: 'review-cur' }, it.type === 'income' ? `+ ${it.currency}` : it.currency),
             h('input', {
@@ -297,6 +318,9 @@ function showReview(sheet, result, source, back) {
           icon('calendar', 14),
           h('input', { type: 'date', class: 'review-date', value: it.date, onchange: (e) => (it.date = e.target.value || it.date) }),
           it.time && h('span', { class: 'muted' }, it.time),
+          accounts().length > 0 && h('label', { class: 'review-acct' }, icon('wallet', 14), accountName(getAccount(it.account)), icon('down', 12, 2.4),
+            accountSelect(it.account, (v) => { it.account = v; render(); })),
+          it.dup && h('span', { class: 'review-dup' }, t('ai.dup')),
           it.lineItems.length > 0 && h('span', { class: 'review-items' }, icon('list', 14), t('detail.itemsN', { n: it.lineItems.length }))),
       ].filter(Boolean));
     };
@@ -304,9 +328,14 @@ function showReview(sheet, result, source, back) {
     return el;
   }
 
-  function save() {
+  async function save() {
     const chosen = items.filter((i) => i.checked && parseFloat(i.amount) > 0);
+    saveBtn.disabled = true;
+    // 小票照片跟着记录一起留存，之后在详情里能翻看原图
+    const photoIds = photos.length ? await savePhotos(photos) : [];
     addTx(chosen.map((it) => ({
+      account: it.account,
+      photos: photoIds,
       type: it.type,
       category: it.category,
       amount: baseAmount(it),
@@ -340,5 +369,5 @@ function showReview(sheet, result, source, back) {
   sheet.setContent(h('div', { class: 'review' },
     (result.message || src) && h('div', { class: 'review-msg' }, src, result.message && h('div', null, result.message)),
     list,
-    h('div', { class: 'review-footer' }, saveBtn)));
+    h('div', { class: 'review-footer' }, summary, saveBtn)));
 }

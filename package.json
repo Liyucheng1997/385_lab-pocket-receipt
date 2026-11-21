@@ -1,6 +1,6 @@
 {
   "name": "pocket-ledger",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "网页版记账软件（手机视图），支持账单识别与语音记账，识别走本地 Claude Code 订阅",
   "type": "module",
   "private": true,

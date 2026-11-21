@@ -25,13 +25,29 @@ function append(el, children) {
   }
 }
 
+// 替换子节点；与 h() 一样会忽略 null / false，方便写条件渲染
+export function mount(el, ...children) {
+  el.replaceChildren();
+  append(el, children);
+}
+
 export function catName(id) {
   return t(`cat.${id}`);
 }
 
+export function tile(iconName, color, size = 38, active = false) {
+  return h('span', { class: `cat-tile${active ? ' active' : ''}`, style: `--c:${color};width:${size}px;height:${size}px` }, icon(iconName, Math.round(size * 0.52)));
+}
+
 export function catTile(id, { size = 38, active = false } = {}) {
   const c = getCategory(id);
-  return h('span', { class: `cat-tile${active ? ' active' : ''}`, style: { width: `${size}px`, height: `${size}px` } }, icon(c.icon, Math.round(size * 0.5)));
+  return tile(c.icon, c.color, size, active);
+}
+
+// 全屏看图
+export function openImage(url) {
+  const overlay = h('div', { class: 'img-viewer', onclick: () => overlay.remove() }, h('img', { src: url, alt: '' }));
+  document.body.append(overlay);
 }
 
 // ---------- 提示 ----------

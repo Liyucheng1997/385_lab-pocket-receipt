@@ -100,7 +100,7 @@
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body { font-family: var(--font); font-size: 13px; letter-spacing: -0.01em; color: var(--text); background: var(--bg); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
 #app { height: 100%; display: flex; flex-direction: column; }
-::selection { background: rgba(0, 113, 227, 0.2); }
+::selection { background: rgba(150, 205, 40, 0.2); }
 button { font: inherit; color: inherit; cursor: pointer; letter-spacing: inherit; }
 input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
 .ico { flex-shrink: 0; display: block; }
@@ -121,7 +121,7 @@ input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .input { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--panel); outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
 textarea.input { height: auto; padding: 8px 12px; resize: vertical; line-height: 1.6; }
 select.input { padding: 0 8px; }
-.input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.15); }
+.input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(150, 205, 40, 0.15); }
 .chip { height: 30px; padding: 0 15px; border: 0; background: var(--fill); border-radius: 99px; color: var(--text-2); font-size: 12.5px; font-weight: 500; transition: background 0.15s, color 0.15s; }
 .chip:hover { color: var(--text); }
 .chip.active { background: var(--primary-soft); color: var(--primary); }

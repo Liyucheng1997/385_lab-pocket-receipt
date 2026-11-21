@@ -71,8 +71,8 @@ async function probeLocal() {
 export async function checkHealth() {
   setHealth({ ...health, state: 'checking' });
   localProbe = await probeLocal();
-  const local = !!localProbe;
-  if (local && localProbe.cli && localProbe.loggedIn) return setHealth({ state: 'ok', mode: 'local', local, model: localProbe.model });
+  const local = !!localProbe && localProbe.engine !== 'none';
+  if (local && localProbe.cli && localProbe.loggedIn) return setHealth({ state: 'ok', mode: 'local', local, model: localProbe.model, engine: localProbe.engine });
   if (getApiKey()) return setHealth({ state: 'ok', mode: 'api', local });
   const state = !local ? 'nokey' : !localProbe.cli ? 'nocli' : 'nologin';
   return setHealth({ state, mode: local ? 'local' : 'api', local });
@@ -243,6 +243,7 @@ export function localParse(text) {
       amount,
       currency: settings().currency,
       rate_to_base: 1,
+      payment: /支付宝|alipay/i.test(seg) ? 'alipay' : /微信|wechat/i.test(seg) ? 'wechat' : /现金|cash/i.test(seg) ? 'cash' : /信用卡|credit/i.test(seg) ? 'credit' : 'unknown',
       category: income && !INCOME_IDS.has(category) ? 'other_income' : category,
       merchant: '',
       note: seg.replace(m[0], '').replace(/[元块圆¥$€￥]|yuan|dollars?|円/gi, '').trim(),

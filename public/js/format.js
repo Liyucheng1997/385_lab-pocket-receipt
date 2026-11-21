@@ -41,6 +41,11 @@ export function moneyCompact(n, currency = settings().currency) {
   return nf(currency, true).format(n || 0);
 }
 
+// 不带货币符号的紧凑数字（日历格子里用）
+export function numCompact(n) {
+  return new Intl.NumberFormat(getLang(), n >= 10000 ? { notation: 'compact', maximumFractionDigits: 1 } : { maximumFractionDigits: 0 }).format(n);
+}
+
 export function currencySymbol(currency = settings().currency) {
   const part = nf(currency, false).formatToParts(0).find((p) => p.type === 'currency');
   return part ? part.value : currency;

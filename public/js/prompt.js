@@ -29,6 +29,7 @@ export function buildSchema(categories) {
             currency: { type: 'string', description: 'ISO 4217 code of the document currency' },
             rate_to_base: { type: 'number', description: 'Approximate value of 1 unit of currency in the base currency; 1 if same' },
             category: { type: 'string', enum: [...expense, ...income] },
+            payment: { type: 'string', enum: ['cash', 'alipay', 'wechat', 'bank', 'credit', 'unknown'], description: 'How it was paid, if the document shows it' },
             merchant: { type: 'string' },
             note: { type: 'string' },
             date: { type: 'string', description: 'YYYY-MM-DD' },
@@ -47,7 +48,7 @@ export function buildSchema(categories) {
               },
             },
           },
-          required: ['type', 'amount', 'currency', 'rate_to_base', 'category', 'merchant', 'note', 'date', 'time', 'items'],
+          required: ['type', 'amount', 'currency', 'rate_to_base', 'category', 'payment', 'merchant', 'note', 'date', 'time', 'items'],
         },
       },
     },
@@ -74,6 +75,7 @@ Rules:
 - category must be one of the ids below; pick the closest, fall back to "other" / "other_income".
   Expense ids: ${categories.expense.join(', ')}
   Income ids: ${categories.income.join(', ')}
+- payment: how it was paid when the document or speech says so — "alipay" (支付宝), "wechat" (微信支付), "cash", "bank" (debit card / bank transfer), "credit" (credit card); otherwise "unknown". A screenshot of the Alipay or WeChat bill list implies that app.
 - date as YYYY-MM-DD. If the year is missing infer the most recent past date; if no date at all use today. Resolve relative dates in speech ("昨天", "last Friday") against today. time as HH:MM or "".
 - For speech, the text may contain several records ("午饭35，打车20") — return each one. If no currency is mentioned assume ${currency}.
 - If nothing can be recognised, return an empty transactions array and explain why in "message".

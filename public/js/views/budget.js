@@ -3,7 +3,7 @@ import { h, openSheet, toast, catTile, catName } from '../ui.js';
 import { icon } from '../icons.js';
 import { t } from '../i18n.js';
 import { CATEGORIES } from '../categories.js';
-import { txBetween, sum, settings, updateSettings } from '../store.js';
+import { txBetween, sum, settings, updateSettings, subscribe } from '../store.js';
 import { money, currencySymbol, monthRange } from '../format.js';
 
 function ring(ratio, over) {
@@ -42,7 +42,16 @@ function amountSheet({ title, value, onSave, onRemove, category }) {
   setTimeout(() => input.focus(), 250);
 }
 
-export function renderBudget(root) {
+// 预算页：整页弹层，数据变化时自动重绘
+export function openBudget() {
+  const root = h('div', { class: 'budget-page' });
+  const draw = () => renderBudget(root);
+  const off = subscribe(draw);
+  openSheet({ title: t('budget.title'), full: true, content: root, onClose: off });
+  draw();
+}
+
+function renderBudget(root) {
   const now = new Date();
   const [from, to] = monthRange(now.getFullYear(), now.getMonth());
   const list = txBetween(from, to);
@@ -96,7 +105,6 @@ export function renderBudget(root) {
   });
 
   root.replaceChildren(
-    h('header', { class: 'page-head' }, h('h1', { class: 'page-title' }, t('budget.title'))),
     main,
     h('div', { class: 'card rank-card' },
       h('div', { class: 'card-title' }, t('budget.categories')),
