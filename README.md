@@ -13,7 +13,7 @@
 - **周期记账**：房租、订阅等每周 / 每月自动记一笔
 - 搜索、CSV 导出、JSON 备份与恢复
 
-**在线版：https://liyucheng1997.github.io/385_lab-pocket-receipt/**（打开后在「我的 → 智能识别」里填你自己的 Anthropic API Key 即可识别账单；记账数据和 Key 都只保存在你的浏览器里）
+**在线版：https://fattura.liyucheng.me**（注册账号后使用，记录保存在服务器上；在「我的 → 智能识别」里填你自己的 Anthropic API Key 即可识别账单）
 
 识别有两种引擎，自动选择：
 
@@ -65,7 +65,6 @@ mkdir -p certs && openssl req -x509 -newkey rsa:2048 -nodes -days 365 -keyout ce
 
 ```
 server.js            本地服务：静态文件 + /api/health + /api/recognize（调用 claude CLI）
-.github/workflows/   推送 main 时把 public/ 发布到 GitHub Pages
 public/css/          tokens.css（设计变量）+ app.css
 public/js/app.js     入口与底部标签栏
 public/js/views/     明细 / 统计 / 资产 / 我的 / 预算
